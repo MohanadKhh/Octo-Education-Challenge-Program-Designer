@@ -34,11 +34,10 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
   3. Install the EF Core package for your provider if not using SQL Server (e.g. `Npgsql.EntityFrameworkCore.PostgreSQL`).
   4. Create and apply EF Core migrations using the **Package Manager Console**:
      ```powershell
-     # Set ProgramDesigner.Infrastructure as the Default Project
      Add-Migration InitialCreate
      Update-Database
      ```
-> **Note:** Ensure the correct startup project (`ProgramDesigner.APIs`) is selected before running migration commands.
+> **Note:** Ensure Set ProgramDesigner.Infrastructure as the Default Project and the correct startup project (`ProgramDesigner.APIs`) is selected before running migration commands.
 
 
 ---
