@@ -43,35 +43,45 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
 ---
 
 
-## 💡 Business Assumptions & Domain Design Decisions
+## 💡 Business Assumptions & Design Decisions
 
-### 1. Educational Hierarchy Integrity (Parent/Ancestor Prerequisite Rejection)
-> **Business Rule**: A topic or step inside a course module cannot list its parent container (or any grandparent container) as a prerequisite.
-* **Domain Context**: A parent container (e.g., `"Foundations Group"`) is defined by the completion of its child steps. If a child step depends on the parent group, a structural deadlock occurs where neither can ever start.
-* **Example**:
-  ```
-  Foundations (Group)
-  └── Introduction to Computing (Step) -> Prerequisite: Foundations (INVALID: Parent Deadlock)
-  ```
+### 1. A step cannot require completion of the module it belongs to
 
----
+> **Scenario**: Imagine a "Foundations" module that contains "Introduction to Computing". If we set "Introduction to Computing" to require "Foundations" to be completed first, we create a deadlock — the module can't complete until the step is done, but the step can't start until the module is done. Neither can ever begin.
 
-### 2. Production Identity Management (GUID Linkages & Dual-Property Outputs)
-> **Business Rule**: Client applications submit node linkages using GUID identifiers (`id` and `prerequisiteId`) to prevent curriculum name collisions.
-* **Domain Context**: Educational institutions frequently reuse common labels across tracks (e.g., `"Electives"`, `"Capstone"`, or `"Foundations"`). Linking via GUIDs eliminates ambiguity when identical names exist across different branches.
-* **User Experience**: Response outputs automatically include both `prerequisiteId` (GUID) and `prerequisiteName` (Human-Readable String) for clear UI rendering.
+This applies to all ancestor levels. A step deep inside a nested structure cannot depend on any of its parent or grandparent containers — because the same deadlock logic applies at every nesting depth.
+
+```
+Foundations (Module)                        
+└── Introduction to Computing (Step)  →  Prerequisite: Foundations  ❌ Deadlock
+```
 
 ---
 
-### 3. Elective Track Selection vs. Sequential Execution
-> **Business Rule**: Choice group options are parallel as for example electives courses not must taken inOrder tracks, so sequential "Forward Reference" constraints do not apply. However, mutual dependency cycles ($A \rightarrow B \rightarrow A$) are strictly forbidden.
-* **Domain Context**: When a student chooses 1 of 3 elective modules, the options are unordered alternatives. Ordering position inside a Choice container does not imply order of execution, but two elective tracks cannot mutually require each other, so for that example be invalid addition that its warning for prerequist from choice.
-* **Example**:
-  ```
-  Major Specialization (Choice Group)
-  ├── AI Module (Group) -> Prerequisite: IT Module
-  └── IT Module (Group) -> Prerequisite: AI Module (INVALID: Mutual Dependency Cycle)
-  ```
+### 2. Each curriculum item is identified by a unique GUID from frontend, not by name
+
+> **Scenario**: A university might have an "Electives" group inside both the AI track and the IT track. If we link prerequisites by name, the system can't tell which "Electives" is meant. By using unique identifiers (GUIDs), every item in the curriculum is unambiguous — even when two items share the same display name.
+
+In API responses, we return **both** the ID and the human-readable name of each prerequisite, so the frontend can display friendly labels while keeping reliable linkages under the hood — [see example of Create Program Endpoint request with GUID and response with prerequisite(ID & Name) below](#1-post-programs--create-program).
+
+```
+AI Track                          IT Track
+└── Electives (id: AAA)           └── Electives (id: BBB)     ← Same name, different items
+```
+
+---
+
+### 3. Choice Group items are unordered — only circular dependencies are invalid
+
+> **Scenario**: When a student picks 2 of 3 specializations (AI, IT, or Programming), these are parallel alternatives — not a sequence. The student doesn't need to complete "AI" before "IT" because elective choices don't depend on each other. So the usual rule of "you can't depend on something that comes after you" doesn't apply inside elective (choice) groups.
+
+> **However**, two elective options **cannot require each other**. If the "AI Module" requires "IT Module" and the "IT Module" requires "AI Module", neither can ever be started — this is a mutual dependency cycle and is always invalid.
+
+```
+Major Specialization (Choose 1)
+├── AI Module  →  Prerequisite: IT Module
+└── IT Module  →  Prerequisite: AI Module     ❌ Mutual cycle — neither can start
+```
 
 
 ---
@@ -217,7 +227,9 @@ Retrieves the full program tree structure by ID.
 ---
 
 ### 3. `POST /programs/{id}/validate` — Validate Program Logic
-Evaluates curriculum prerequisite integrity, identifying impossible prerequisites and reachability warnings.
+Checks whether the curriculum's prerequisite rules make sense before going live. Returns two categories:
+- **Impossible Prerequisites** (`isValid: false`): Structural errors that make the program uncompletable (e.g., deadlocks, circular dependencies). These **must** be fixed.
+- **Reachability Warnings** (`isValid: true`): The program is valid, but some prerequisites point to items inside an elective group that a student might not choose — worth reviewing but not blocking.
 
 #### Response Sample (`200 OK`)
 ```json
@@ -243,7 +255,10 @@ Evaluates curriculum prerequisite integrity, identifying impossible prerequisite
 ---
 
 ### 4. `POST /programs/{id}/simulate` — Simulate Participant Progress
-Simulates a participant's progress based on selected choice tracks and completed steps. Filtered output returns only active statuses (`Completed`, `Unlocked`, `Blocked`).
+Simulates a participant's journey through the program based on their elective choices and completed steps. Shows what they've done, what's available next, and what's still locked:
+- **Completed**: The student has finished this step.
+- **Unlocked**: All prerequisites are met — the student can start this step now.
+- **Blocked**: One or more prerequisites are not yet completed.
 
 #### Request Body Sample
 ```json
