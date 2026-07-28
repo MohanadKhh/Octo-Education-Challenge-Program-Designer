@@ -2,7 +2,9 @@
 
 A clean, production-grade **.NET 10 REST API** for designing, validating, and simulating educational programs modeled as recursive trees of **Steps** and **Groups**.
 
+
 ---
+
 
 ## ⚡ Quick Start (Run in under 2 minutes)
 
@@ -38,7 +40,9 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
      ```
 > **Note:** Ensure the correct startup project (`ProgramDesigner.APIs`) is selected before running migration commands.
 
+
 ---
+
 
 ## 💡 Business Assumptions & Domain Design Decisions
 
@@ -70,14 +74,18 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
   └── IT Module (Group) -> Prerequisite: AI Module (INVALID: Mutual Dependency Cycle)
   ```
 
+
 ---
+
 
 ## AI Tool Usage
 
 - **Antigravity** — Help me in building the implementation: the Clean Architecture solution, domain model, validation logic (cycle detection, transitive reachability), API endpoints, and xUnit test suite.
 - **Claude** — used to think through the business concepts before implementation: the two validation categories (impossible vs. reachability-risk prerequisites), all possible edge cases like mutual cycles inside Choice groups, and prerequisites on a Choice group as a whole vs. a specific child inside one — see "Business Assumptions & Domain Design Decisions" above.
 
+
 ---
+
 
 ## 🏗️ Architecture Overview
 
