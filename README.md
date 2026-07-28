@@ -14,7 +14,7 @@ A .NET 10 Clean Architecture REST API for designing, validating, and simulating 
 dotnet run --project ProgramDesigner.APIs
 ```
 The API starts at `https://localhost:7198` (or `http://localhost:5198`).  
-Open Swagger UI in your browser: `https://localhost:7198/openapi/v1.json` or test via OpenAPI tooling.
+Open Scalar UI in your browser: `https://localhost:7198/openapi/v1.json` or test via OpenAPI tooling.
 
 ### 2. Run the Test Suite
 ```bash
