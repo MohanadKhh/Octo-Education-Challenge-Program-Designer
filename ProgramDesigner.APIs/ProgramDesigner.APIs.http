@@ -1,0 +1,6 @@
+@ProgramDesigner.APIs_HostAddress = http://localhost:5278
+
+GET {{ProgramDesigner.APIs_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

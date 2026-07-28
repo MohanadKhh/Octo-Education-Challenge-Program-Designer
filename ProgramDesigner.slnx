@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="ProgramDesigner.APIs/ProgramDesigner.APIs.csproj" />
+  <Project Path="ProgramDesigner.Application/ProgramDesigner.Application.csproj" />
+  <Project Path="ProgramDesigner.Domain/ProgramDesigner.Domain.csproj" />
+  <Project Path="ProgramDesigner.Infrastructure/ProgramDesigner.Infrastructure.csproj" />
+  <Project Path="ProgramDesigner.Tests/ProgramDesigner.Tests.csproj" />
+</Solution>
