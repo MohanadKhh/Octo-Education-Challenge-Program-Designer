@@ -20,7 +20,7 @@ Open Scalar UI in your browser: `https://localhost:7198/openapi/v1.json` or test
 ```bash
 dotnet test ProgramDesigner.Tests --verbosity normal
 ```
-All **11 unit test scenarios** pass cleanly in under 1 second.
+All **16 unit test scenarios** pass cleanly.
 
 ---
 
