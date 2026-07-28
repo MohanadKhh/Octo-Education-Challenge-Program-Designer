@@ -24,36 +24,6 @@ All **16 unit test scenarios** pass cleanly.
 
 ---
 
-## 🏗️ Architecture & Technical Stack
-
-Built following **Clean Architecture** and **Domain-Driven Design (DDD)** principles:
-
-```
-ProgramDesigner.APIs (ASP.NET Core Controllers)
-  ├── ProgramDesigner.Application (ProgramValidator, ProgramSimulator, Services, DTOs, Mappers, Interfaces)
-  ├── ProgramDesigner.Infrastructure (EF Core InMemory, UnitOfWork, Repository)
-  └── ProgramDesigner.Domain (Entities, Enums)
-```
-
-* **Domain Layer**: Zero dependencies on ASP.NET, EF Core, or any third-party framework. Contains pure domain entities (`Node`, `LearningProgram`) and core enums (`NodeType`, `GroupRule`).
-* **Application Layer**: Program tree validation engine (`IProgramValidator` / `ProgramValidator`), simulation engine (`IProgramSimulator` / `ProgramSimulator`), use case orchestration (`IProgramService` / `ProgramService`), DTO definitions (`ProgramValidationResult`, `ProgramSimulationResult`), standardized response wrappers (`GeneralResult`, `GeneralResult<T>`, `ResultStatus`), and explicit recursive DTO↔Entity mapping (`NodeMapper`). Uses **Dependency Injection** for all services and **Unit of Work** (`IUnitOfWork`) for transaction control without throwing exceptions for control flow.
-* **Infrastructure Layer**: DI registrations in `DependencyInjection.cs`, persistence via EF Core (InMemory provider configured by default for zero-setup execution). Can be swapped to SQL Server with a single line change.
-* **API Layer**: ASP.NET Core REST API controllers with camelCase JSON formatting and string enum serialization.
-
----
-
-## 🌲 Domain Model & Tree Design
-
-The program is modeled as a single, unified recursive tree. Step vs Group is represented as a discriminated type (`NodeType`) rather than two unrelated class hierarchies:
-
-* **Step (Leaf)**: Atomic activity (`attend session`, `pass test`, `submit work`).
-* **Group (Container)**: Ordered list of child nodes (`Step` or nested `Group`).
-  * `InOrder`: Every child must be completed in sequential order.
-  * `Choice(N of M)`: Participant picks and completes any $N$ out of $M$ children.
-* **Prerequisites**: Any node (Step or Group) may carry a `prerequisiteId` (or user-friendly `prerequisiteName`), blocking access until satisfied.
-
----
-
 ## 🎯 Validation Logic & Algorithm Design
 
 Validation is split into two distinct categories:
@@ -238,3 +208,34 @@ As permitted and expected by the challenge guidelines, AI tools were used during
   * Brainstorming edge-case test tree fixtures.
   * Generating markdown documentation and ASCII tree visualizations.
 * **Human Oversight**: All core graph algorithms (DFS 3-coloring cycle detection, LCA forward reference checking, ancestor-chain co-selection reachability) were strictly reviewed, verified, and unit-tested for domain correctness.
+
+---
+
+## 🏗️ Architecture & Technical Stack
+
+Built following **Clean Architecture** and **Domain-Driven Design (DDD)** principles:
+
+```
+ProgramDesigner.APIs (ASP.NET Core Controllers)
+  ├── ProgramDesigner.Application (ProgramValidator, ProgramSimulator, Services, DTOs, Mappers, Interfaces)
+  ├── ProgramDesigner.Infrastructure (EF Core InMemory, UnitOfWork, Repository)
+  └── ProgramDesigner.Domain (Entities, Enums)
+```
+
+* **Domain Layer**: Zero dependencies on ASP.NET, EF Core, or any third-party framework. Contains pure domain entities (`Node`, `LearningProgram`) and core enums (`NodeType`, `GroupRule`).
+* **Application Layer**: Program tree validation engine (`IProgramValidator` / `ProgramValidator`), simulation engine (`IProgramSimulator` / `ProgramSimulator`), use case orchestration (`IProgramService` / `ProgramService`), DTO definitions (`ProgramValidationResult`, `ProgramSimulationResult`), standardized response wrappers (`GeneralResult`, `GeneralResult<T>`, `ResultStatus`), and explicit recursive DTO↔Entity mapping (`NodeMapper`). Uses **Dependency Injection** for all services and **Unit of Work** (`IUnitOfWork`) for transaction control without throwing exceptions for control flow.
+* **Infrastructure Layer**: DI registrations in `DependencyInjection.cs`, persistence via EF Core (InMemory provider configured by default for zero-setup execution). Can be swapped to SQL Server with a single line change.
+* **API Layer**: ASP.NET Core REST API controllers with camelCase JSON formatting and string enum serialization.
+
+---
+
+## 🌲 Domain Model & Tree Design
+
+The program is modeled as a single, unified recursive tree. Step vs Group is represented as a discriminated type (`NodeType`) rather than two unrelated class hierarchies:
+
+* **Step (Leaf)**: Atomic activity (`attend session`, `pass test`, `submit work`).
+* **Group (Container)**: Ordered list of child nodes (`Step` or nested `Group`).
+  * `InOrder`: Every child must be completed in sequential order.
+  * `Choice(N of M)`: Participant picks and completes any $N$ out of $M$ children.
+* **Prerequisites**: Any node (Step or Group) may carry a `prerequisiteId` (or user-friendly `prerequisiteName`), blocking access until satisfied.
+
