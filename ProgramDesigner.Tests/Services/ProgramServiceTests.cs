@@ -27,6 +27,9 @@ public class ProgramServiceTests
     public async Task CreateProgram_WithValidGroupRoot_ReturnsSuccessResult()
     {
         // Arrange
+        var step1Id = Guid.NewGuid();
+        var step2Id = Guid.NewGuid();
+
         var request = new CreateProgramRequest
         {
             Name = "Test Program",
@@ -37,8 +40,8 @@ public class ProgramServiceTests
                 Rule = "inOrder",
                 Children = new List<NodeDto>
                 {
-                    new() { Name = "Step 1", Type = "step", StepType = "attend session" },
-                    new() { Name = "Step 2", Type = "step", StepType = "pass test", PrerequisiteName = "Step 1" }
+                    new() { Id = step1Id, Name = "Step 1", Type = "step", StepType = "attend session" },
+                    new() { Id = step2Id, Name = "Step 2", Type = "step", StepType = "pass test", PrerequisiteId = step1Id }
                 }
             }
         };
@@ -59,9 +62,40 @@ public class ProgramServiceTests
         step1.Children.Should().BeNull();
         step2.Children.Should().BeNull();
 
-        // Step 2 has both PrerequisiteId and PrerequisiteName populated
+        // Step 2 has both PrerequisiteId and PrerequisiteName populated in response output
         step2.PrerequisiteId.Should().Be(step1.Id);
         step2.PrerequisiteName.Should().Be("Step 1");
+    }
+
+    [Fact]
+    public async Task CreateProgram_WithInvalidPrerequisiteId_ReturnsValidationFailure()
+    {
+        // Arrange
+        var unknownId = Guid.NewGuid();
+
+        var request = new CreateProgramRequest
+        {
+            Name = "Invalid Prereq Program",
+            RootNode = new NodeDto
+            {
+                Name = "Root Group",
+                Type = "group",
+                Rule = "inOrder",
+                Children = new List<NodeDto>
+                {
+                    new() { Name = "Step 1", Type = "step", StepType = "attend session", PrerequisiteId = unknownId }
+                }
+            }
+        };
+
+        // Act
+        var result = await _service.CreateProgramAsync(request);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.ValidationError);
+        result.Errors.Should().ContainKey("NodeMapping");
+        result.Errors!["NodeMapping"].Should().Contain(e => e.Contains("no node with that ID exists"));
     }
 
     [Fact]
@@ -159,15 +193,49 @@ public class ProgramServiceTests
         result.Errors.Should().ContainKey("NodeMapping");
         result.Errors!["NodeMapping"].Should().Contain(e => e.Contains("Step node 'Networks & Security' cannot have children"));
     }
+    [Fact]
+    public async Task CreateProgram_WithDuplicateDatabaseKey_ReturnsValidationFailure_NoException()
+    {
+        // Arrange
+        var rootId = Guid.NewGuid();
+
+        var request = new CreateProgramRequest
+        {
+            Name = "Program 1",
+            RootNode = new NodeDto
+            {
+                Id = rootId,
+                Name = "Root Group",
+                Type = "group",
+                Rule = "inOrder"
+            }
+        };
+
+        // First call succeeds
+        var firstResult = await _service.CreateProgramAsync(request);
+        firstResult.IsSuccess.Should().BeTrue();
+
+        // Second call with same rootId triggers DB duplicate key
+        var duplicateResult = await _service.CreateProgramAsync(request);
+
+        // Assert
+        duplicateResult.IsSuccess.Should().BeFalse();
+        duplicateResult.Status.Should().Be(ResultStatus.ValidationError);
+        duplicateResult.Errors.Should().ContainKey("EntityId");
+    }
 }
 
 internal class MemoryProgramRepository : IProgramRepository
 {
     private readonly Dictionary<Guid, LearningProgram> _programs = new();
+    private readonly HashSet<Guid> _nodeIds = new();
 
     public Task AddAsync(LearningProgram program)
     {
-        _programs[program.Id] = program;
+        if (!_programs.TryAdd(program.Id, program) || !_nodeIds.Add(program.RootNode.Id))
+        {
+            throw new InvalidOperationException($"An item with the same key has already been added. Key: {program.RootNode.Id}");
+        }
         return Task.CompletedTask;
     }
 

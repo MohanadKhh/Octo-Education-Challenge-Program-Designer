@@ -76,8 +76,20 @@ public class ProgramService : IProgramService
             RootNodeId = rootNode.Id
         };
 
-        await _unitOfWork.Programs.AddAsync(program);
-        await _unitOfWork.SaveChangesAsync();
+        try
+        {
+            await _unitOfWork.Programs.AddAsync(program);
+            await _unitOfWork.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            return GeneralResult<ProgramResponse>.ValidationFailure(
+                new Dictionary<string, string[]>
+                {
+                    { "EntityId", new[] { $"A node or program with duplicate ID already exists in the database. Ensure unique IDs are used across requests. (Details: {ex.Message})" } }
+                },
+                "Program creation failed due to duplicate entity ID constraint.");
+        }
 
         var response = NodeMapper.ToResponse(program);
         return GeneralResult<ProgramResponse>.Success(response, "Program created successfully.");

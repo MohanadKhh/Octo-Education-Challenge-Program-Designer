@@ -6,8 +6,8 @@ namespace ProgramDesigner.Application.Mappings;
 
 /// <summary>
 /// Static mapper between NodeDto ↔ Node (recursive tree mapping).
-/// Uses non-throwing validation via TryToDomain to return GeneralResult-compatible validation errors.
-/// Stateless and thread-safe.
+/// Option A Architecture: PrerequisiteId inputs with PrerequisiteId + PrerequisiteName outputs.
+/// Non-throwing validation via TryToDomain.
 /// </summary>
 public static class NodeMapper
 {
@@ -23,17 +23,15 @@ public static class NodeMapper
         int order = 0)
     {
         var errorList = new List<string>();
-        var nameIndex = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-        var duplicateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var pendingPrerequisiteNames = new Dictionary<Guid, string>();
+        var allNodeIds = new HashSet<Guid>();
 
-        // Pass 1: Build the full node tree and collect name index + syntax errors
-        root = BuildNode(dto, programId, order, nameIndex, duplicateNames, pendingPrerequisiteNames, errorList);
+        // Pass 1: Build tree and collect node IDs + syntax validation
+        root = BuildNode(dto, programId, order, allNodeIds, errorList);
 
-        // Pass 2: Resolve prerequisiteName → prerequisiteId
+        // Pass 2: Validate that all PrerequisiteId references point to an existing node in the tree
         if (root is not null)
         {
-            ResolvePrerequisiteNames(root, nameIndex, duplicateNames, pendingPrerequisiteNames, errorList);
+            ValidatePrerequisiteIds(root, allNodeIds, errorList);
         }
 
         if (errorList.Count > 0)
@@ -51,7 +49,7 @@ public static class NodeMapper
     }
 
     /// <summary>
-    /// Overload for ToDomain that uses TryToDomain without throwing exceptions on fallback.
+    /// Fallback helper for ToDomain.
     /// </summary>
     public static Node ToDomain(NodeDto dto, Guid programId, int order = 0)
     {
@@ -65,9 +63,7 @@ public static class NodeMapper
 
     private static Node? BuildNode(
         NodeDto dto, Guid programId, int order,
-        Dictionary<string, Guid> nameIndex,
-        HashSet<string> duplicateNames,
-        Dictionary<Guid, string> pendingPrerequisiteNames,
+        HashSet<Guid> allNodeIds,
         List<string> errorList)
     {
         if (dto is null)
@@ -126,9 +122,16 @@ public static class NodeMapper
             errorList.Add($"Step node '{dto.Name}' cannot have a group rule ('{dto.Rule}'). Only Group nodes can specify rules.");
         }
 
+        var nodeId = dto.Id ?? Guid.NewGuid();
+
+        if (!allNodeIds.Add(nodeId))
+        {
+            errorList.Add($"Duplicate node ID '{nodeId}' found on node '{dto.Name}'. Every node must have a unique ID.");
+        }
+
         var node = new Node
         {
-            Id = dto.Id ?? Guid.NewGuid(),
+            Id = nodeId,
             Name = dto.Name,
             Type = nodeType,
             StepType = nodeType == NodeType.Step ? dto.StepType : null,
@@ -138,15 +141,6 @@ public static class NodeMapper
             Order = order,
             ProgramId = programId
         };
-
-        if (!string.IsNullOrWhiteSpace(node.Name))
-        {
-            if (!nameIndex.TryAdd(node.Name, node.Id))
-                duplicateNames.Add(node.Name);
-        }
-
-        if (dto.PrerequisiteName is not null)
-            pendingPrerequisiteNames[node.Id] = dto.PrerequisiteName;
 
         if (dto.Children is not null && dto.Children.Count > 0)
         {
@@ -158,7 +152,7 @@ public static class NodeMapper
             {
                 for (int i = 0; i < dto.Children.Count; i++)
                 {
-                    var child = BuildNode(dto.Children[i], programId, i, nameIndex, duplicateNames, pendingPrerequisiteNames, errorList);
+                    var child = BuildNode(dto.Children[i], programId, i, allNodeIds, errorList);
                     if (child is not null)
                     {
                         child.ParentNodeId = node.Id;
@@ -171,34 +165,21 @@ public static class NodeMapper
         return node;
     }
 
-    private static void ResolvePrerequisiteNames(
+    private static void ValidatePrerequisiteIds(
         Node node,
-        Dictionary<string, Guid> nameIndex,
-        HashSet<string> duplicateNames,
-        Dictionary<Guid, string> pendingPrerequisiteNames,
+        HashSet<Guid> allNodeIds,
         List<string> errorList)
     {
-        if (pendingPrerequisiteNames.TryGetValue(node.Id, out var prereqName))
+        if (node.PrerequisiteId.HasValue)
         {
-            if (node.PrerequisiteId is null)
+            if (!allNodeIds.Contains(node.PrerequisiteId.Value))
             {
-                if (duplicateNames.Contains(prereqName))
-                {
-                    errorList.Add($"Node '{node.Name}' has prerequisiteName '{prereqName}', but that name is not unique in the tree.");
-                }
-                else if (!nameIndex.TryGetValue(prereqName, out var resolvedId))
-                {
-                    errorList.Add($"Node '{node.Name}' has prerequisiteName '{prereqName}', but no node with that name exists in the tree.");
-                }
-                else
-                {
-                    node.PrerequisiteId = resolvedId;
-                }
+                errorList.Add($"Node '{node.Name}' has prerequisiteId '{node.PrerequisiteId.Value}', but no node with that ID exists in the program tree.");
             }
         }
 
         foreach (var child in node.Children)
-            ResolvePrerequisiteNames(child, nameIndex, duplicateNames, pendingPrerequisiteNames, errorList);
+            ValidatePrerequisiteIds(child, allNodeIds, errorList);
     }
 
     public static NodeDto ToDto(Node node, Dictionary<Guid, string>? idToNameIndex = null)

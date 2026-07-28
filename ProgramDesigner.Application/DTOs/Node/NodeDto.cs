@@ -2,10 +2,11 @@ namespace ProgramDesigner.Application.DTOs;
 
 /// <summary>
 /// Recursive DTO representing a node in the program tree (used for both request and response).
+/// Option A Architecture: Input specifies PrerequisiteId. Responses include both PrerequisiteId and PrerequisiteName.
 /// </summary>
 public class NodeDto
 {
-    /// <summary>Null on create requests; assigned by the server on responses.</summary>
+    /// <summary>Unique node identifier (assigned by client or server).</summary>
     public Guid? Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
@@ -22,16 +23,10 @@ public class NodeDto
     /// <summary>For Choice groups: pick N of M. Null otherwise.</summary>
     public int? ChoiceCount { get; set; }
 
-    /// <summary>
-    /// References another node by Id.
-    /// Included in responses alongside PrerequisiteName when a prerequisite is present.
-    /// </summary>
+    /// <summary>References another node by its unique Id.</summary>
     public Guid? PrerequisiteId { get; set; }
 
-    /// <summary>
-    /// References another node by its unique name.
-    /// Included in responses alongside PrerequisiteId when a prerequisite is present.
-    /// </summary>
+    /// <summary>Populated in response DTOs to display the name of the prerequisite target node.</summary>
     public string? PrerequisiteName { get; set; }
 
     /// <summary>Children nodes. Null/omitted when a node has no children.</summary>

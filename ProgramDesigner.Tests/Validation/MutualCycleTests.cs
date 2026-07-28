@@ -6,9 +6,9 @@ using ProgramDesigner.Tests.Helpers;
 namespace ProgramDesigner.Tests.Validation;
 
 /// <summary>
-/// Tree 3 — Mutual cross-branch cycle (rejected — needs real graph traversal).
+/// Tree 3 — Mutual cross-branch cycle inside a Choice group (pure dependency cycle, not forward reference).
 /// 
-/// Program
+/// Program [choice]
 /// ├── Module A [in order] · PREREQUISITE: Module B
 /// │   └── Step: A1
 /// └── Module B [in order] · PREREQUISITE: Module A
@@ -32,7 +32,7 @@ public class MutualCycleTests
         moduleA.WithPrerequisite(moduleB);
         moduleB.WithPrerequisite(moduleA);
 
-        var root = TreeBuilder.Group("Program", GroupRule.InOrder)
+        var root = TreeBuilder.Group("Program", GroupRule.Choice)
             .WithChild(moduleA)
             .WithChild(moduleB)
             .Build();
@@ -45,8 +45,11 @@ public class MutualCycleTests
         result.IsValid.Should().BeFalse("mutual prerequisites form a cycle");
         result.ImpossiblePrerequisites.Should().NotBeEmpty("the cycle should be detected");
 
-        // Both Module A and Module B should be flagged
+        // Both Module A and Module B should be flagged for dependency cycle (not forward reference)
         result.ImpossiblePrerequisites
             .Should().Contain(i => i.NodeName == "Module A" || i.NodeName == "Module B");
+
+        result.ImpossiblePrerequisites
+            .Should().OnlyContain(i => i.Reason.Contains("cycle"));
     }
 }
