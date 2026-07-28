@@ -105,8 +105,6 @@ All application services return a standardized `GeneralResult<T>` wrapper (`Succ
 
 ## 🔌 API Endpoints & Contract Samples
 
----
-
 ### 1. `POST /programs` — Create Program
 Creates a new learning program tree.
 
