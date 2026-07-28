@@ -72,6 +72,13 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
 
 ---
 
+## AI Tool Usage
+
+- **Antigravity** — Help me in building the implementation: the Clean Architecture solution, domain model, validation logic (cycle detection, transitive reachability), API endpoints, and xUnit test suite.
+- **Claude** — used to think through the business concepts before implementation: the two validation categories (impossible vs. reachability-risk prerequisites), all possible edge cases like mutual cycles inside Choice groups, and prerequisites on a Choice group as a whole vs. a specific child inside one — see "Business Assumptions & Domain Design Decisions" above.
+
+---
+
 ## 🏗️ Architecture Overview
 
 Built following **Clean Architecture** and **DDD** principles:
