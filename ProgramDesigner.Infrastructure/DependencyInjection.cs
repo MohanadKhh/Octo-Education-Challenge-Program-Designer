@@ -15,8 +15,8 @@ public static class DependencyInjection
         // ── Option 1: In-Memory Database (Default - Zero Setup) ──────────────────
         // Note: Data is temporary and resets when the application stops.
         // ────────────────────────────────────────────────────────────────────
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseInMemoryDatabase("ProgramDesignerDb"));
+        //services.AddDbContext<AppDbContext>(options =>
+        //    options.UseInMemoryDatabase("ProgramDesignerDb"));
 
 
         // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -29,9 +29,9 @@ public static class DependencyInjection
         //      3.1. add-migration InitialCreate
         //      3.2. update-database
         // ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-        //var connectionString = "Server=.\\MOHANADKHH;DataBase=ProgramDesignerDb;Trusted_Connection=true;TrustServerCertificate=true";
-        //services.AddDbContext<AppDbContext>(options =>
-        //    options.UseSqlServer(connectionString));
+        var connectionString = "Server=.\\MOHANADKHH;DataBase=ProgramDesignerDb;Trusted_Connection=true;TrustServerCertificate=true";
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlServer(connectionString));
 
         services.AddScoped<IProgramRepository, ProgramRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();

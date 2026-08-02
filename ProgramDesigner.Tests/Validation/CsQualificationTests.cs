@@ -6,28 +6,30 @@ using ProgramDesigner.Tests.Helpers;
 namespace ProgramDesigner.Tests.Validation;
 
 /// <summary>
-/// Full Computer Science qualification scenario.
-/// Must validate cleanly: isValid=true, 0 impossible prerequisites, 0 warnings.
+/// Full Computer Science Qualification Tree (Valid curriculum, zero impossible prerequisites, zero reachability warnings).
 /// 
-/// Computer Science
-/// ├── Foundations [in order]
+/// ── Tree Scenario: Complete CS Qualification Curriculum ────────────────────────
+/// Computer Science (Group, inOrder)
+/// ├── Foundations (Group, inOrder)
 /// │   ├── Step: Introduction to Computing
 /// │   └── Step: Mathematics for Computing
-/// ├── Major [choice — pick 1 of 3] · PREREQUISITE: Foundations
-/// │   ├── AI [in order]
+/// ├── Major (Group, CHOICE: 1 of 3) · PREREQUISITE: Foundations ✅ [SAFE: Whole Group Prerequisite]
+/// │   ├── AI (Group, inOrder)
 /// │   │   ├── Step: Machine Learning Basics
-/// │   │   ├── Electives [choice — pick 2 of 3]
+/// │   │   ├── Electives (Group, CHOICE: 2 of 3)
 /// │   │   │   ├── Step: Computer Vision
 /// │   │   │   ├── Step: Natural Language Processing
 /// │   │   │   └── Step: Robotics
-/// │   │   └── Step: AI Capstone · PREREQUISITE: Electives
-/// │   ├── IT [in order]
-/// │   │   ├── Step: Networks &amp; Security
+/// │   │   └── Step: AI Capstone · PREREQUISITE: Electives ✅ [SAFE: Whole Group Prerequisite]
+/// │   ├── IT (Group, inOrder)
+/// │   │   ├── Step: Networks & Security
 /// │   │   └── Step: Systems Administration
-/// │   └── Programming [in order]
-/// │       ├── Step: Algorithms &amp; Data Structures
+/// │   └── Programming (Group, inOrder)
+/// │       ├── Step: Algorithms & Data Structures
 /// │       └── Step: Software Engineering
-/// └── Step: Final Capstone · PREREQUISITE: Major
+/// └── Step: Final Capstone · PREREQUISITE: Major ✅ [SAFE: Whole Group Prerequisite]
+/// 
+/// Expect: IsValid = true, ImpossiblePrerequisites = 0, ReachabilityWarnings = 0.
 /// </summary>
 public class CsQualificationTests
 {

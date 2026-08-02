@@ -6,14 +6,17 @@ using ProgramDesigner.Tests.Helpers;
 namespace ProgramDesigner.Tests.Validation;
 
 /// <summary>
-/// Tree 1 — Self-reference + forward-reference (both rejected).
+/// Self-Reference & Forward-Reference Validation Tests.
 /// 
-/// Onboarding [in order]
-/// ├── Step: Sign Contract   · PREREQUISITE: Sign Contract  (self-reference)
-/// ├── Step: Setup Equipment · PREREQUISITE: First Day Training  (forward-reference)
+/// ── Scenario 1: Self-Reference & InOrder Forward-Reference ─────────────────────
+/// Onboarding (Group, inOrder)
+/// ├── Step: Sign Contract · PREREQUISITE: Sign Contract ❌ [IMPOSSIBLE: Self-Reference]
+/// ├── Step: Setup Equipment · PREREQUISITE: First Day Training ❌ [IMPOSSIBLE: Forward Reference in InOrder]
 /// └── Step: First Day Training
 /// 
-/// Expect 2 impossible-prerequisite entries.
+/// ── Scenario 2: Isolated Self-Reference ───────────────────────────────────────────
+/// Program (Group, inOrder)
+/// └── Step: Only Step · PREREQUISITE: Only Step ❌ [IMPOSSIBLE: Self-Reference]
 /// </summary>
 public class SelfAndForwardReferenceTests
 {

@@ -6,19 +6,20 @@ using ProgramDesigner.Tests.Helpers;
 namespace ProgramDesigner.Tests.Validation;
 
 /// <summary>
-/// Tree 5 — Fully valid, no warnings (prerequisite on a choice group as a whole).
+/// Prerequisite on Choice Group As A Whole Validation Tests (Fully valid, zero warnings).
 /// 
-/// Program
-/// ├── Foundations [in order]
+/// ── Tree Scenario: Prerequisite Targeting a Choice Group As A Whole ────────────
+/// Program (Group, inOrder)
+/// ├── Foundations (Group, inOrder)
 /// │   ├── Step: Basics
 /// │   └── Step: Setup
-/// ├── Specialty [choice — pick 2 of 3] · PREREQUISITE: Foundations
+/// ├── Specialty (Group, CHOICE: 2 of 3) · PREREQUISITE: Foundations ✅ [SAFE: Whole Group Prerequisite]
 /// │   ├── Step: Option X
 /// │   ├── Step: Option Y
 /// │   └── Step: Option Z
-/// └── Step: Capstone · PREREQUISITE: Specialty
+/// └── Step: Capstone · PREREQUISITE: Specialty ✅ [SAFE: Whole Group Prerequisite]
 /// 
-/// Expect isValid=true, 0 warnings.
+/// Expect: IsValid = true, ImpossiblePrerequisites = 0, ReachabilityWarnings = 0.
 /// </summary>
 public class FullyValidNoWarningsTests
 {

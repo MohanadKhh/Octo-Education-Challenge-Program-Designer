@@ -10,8 +10,8 @@ namespace ProgramDesigner.Application.Services;
 /// Located in Application Services.
 /// 
 /// Validates two categories:
-/// 1. Impossible prerequisites → reject (self-ref, containment cycle, forward-ref, graph cycle)
-/// 2. Reachability warnings → warn (target under a Choice(N &lt; M) ancestor)
+/// 1. Impossible prerequisites → reject (self-ref, direct mutual, containment cycle (inside and outside), forward-ref, graph cycle)
+/// 2. Reachability warnings → warn (target under a Choice(N < M) ancestor)
 /// </summary>
 public class ProgramValidator : IProgramValidator
 {
@@ -22,13 +22,14 @@ public class ProgramValidator : IProgramValidator
     {
         var result = new ProgramValidationResult();
 
-        // ── Phase 0: Build indexes ─────────────────────────────────────
+        // ── Phase 0: Build tree indexes ─────────────────────────────────
         var nodeIndex = new Dictionary<Guid, Node>();   // id → node
         var parentMap = new Dictionary<Guid, Node?>();   // id → parent node (null for root)
         BuildIndex(root, null, nodeIndex, parentMap);
 
         // ── Phase 1: Per-prerequisite impossible checks ────────────────
-        var validPrerequisiteEdges = new List<(Node source, Node target)>();
+        // Map: sourceNodeId → (source, target, sourceAncestors, targetAncestors)
+        var validPrerequisiteEdges = new Dictionary<Guid, (Node source, Node target, List<Node> sourceAncestors, List<Node> targetAncestors)>();
 
         foreach (var node in nodeIndex.Values)
         {
@@ -36,7 +37,7 @@ public class ProgramValidator : IProgramValidator
 
             if (!nodeIndex.TryGetValue(node.PrerequisiteId.Value, out var target))
             {
-                result.ImpossiblePrerequisites.Add(MakeIssue(node, node.PrerequisiteId, null,
+                result.ImpossiblePrerequisites.Add(MakeIssue(node, node.PrerequisiteId.Value, null,
                     $"Prerequisite target '{node.PrerequisiteId}' does not exist in the program tree."));
                 continue;
             }
@@ -49,49 +50,55 @@ public class ProgramValidator : IProgramValidator
                 continue;
             }
 
-            // 1b. Containment cycle — node depends on a descendant OR an ancestor container
-            if (node.Type == NodeType.Group && IsDescendant(node, target.Id))
+            // 1b. Direct Mutual Cycle (A -> B and B -> A)
+            if (target.PrerequisiteId.HasValue && target.PrerequisiteId.Value == node.Id)
             {
                 result.ImpossiblePrerequisites.Add(MakeIssue(node, target,
-                    $"'{node.Name}' depends on '{target.Name}', which is contained inside it (containment cycle)."));
+                    $"'{node.Name}' and '{target.Name}' form a direct mutual prerequisite cycle."));
                 continue;
             }
 
-            if (target.Type == NodeType.Group && IsDescendant(target, node.Id))
+            // Precompute ancestor chains once for both nodes: [self, parent, grandparent, ..., root]
+            var sourceAncestors = GetAncestorChain(node.Id, parentMap, nodeIndex);
+            var targetAncestors = GetAncestorChain(target.Id, parentMap, nodeIndex);
+
+            // 1c. Containment cycle — parent group depends on its own child/descendant
+            if (node.Type == NodeType.Group && targetAncestors.Contains(node))
             {
                 result.ImpossiblePrerequisites.Add(MakeIssue(node, target,
-                    $"'{node.Name}' depends on '{target.Name}', which is a container that contains it (containment cycle)."));
+                    $"'{node.Name}' depends on '{target.Name}', which is parent depending on one of his descendants (containment cycle)."));
                 continue;
             }
 
-            // 1c. Forward-reference in InOrder sequence
-            if (IsForwardReferenceInOrder(node, target, parentMap, nodeIndex))
+            // 1d. Containment cycle — child depends on an ancestor container
+            if (target.Type == NodeType.Group && sourceAncestors.Contains(target))
+            {
+                result.ImpossiblePrerequisites.Add(MakeIssue(node, target,
+                    $"'{node.Name}' depends on '{target.Name}', which is child depending on one of his ancestors (containment cycle)."));
+                continue;
+            }
+
+            // 1e. Forward-reference in InOrder sequence (using precomputed ancestor chains)
+            if (IsForwardReferenceInOrder(sourceAncestors, targetAncestors))
             {
                 result.ImpossiblePrerequisites.Add(MakeIssue(node, target,
                     $"'{node.Name}' depends on '{target.Name}', which comes later in an InOrder sequence (forward reference)."));
                 continue;
             }
 
-            // Not caught by simple checks — save for graph-level cycle detection
-            validPrerequisiteEdges.Add((node, target));
+            // Not caught by simple checks — save for graph-level cycle detection & reachability warnings
+            validPrerequisiteEdges[node.Id] = (node, target, sourceAncestors, targetAncestors);
         }
 
-        // 1d. General graph cycle detection (catches mutual/indirect cycles like Tree 3)
-        var cycleIssues = DetectCycles(validPrerequisiteEdges, nodeIndex);
+        // 1f. Indirect Mutual Cycle (A -> B and B -> C and C -> A)
+        var cycleIssues = DetectCycles(validPrerequisiteEdges);
         result.ImpossiblePrerequisites.AddRange(cycleIssues);
 
         // ── Phase 2: Reachability warnings ─────────────────────────────
-        // Only check edges not already flagged as impossible
-        var impossibleNodeIds = new HashSet<Guid>(
-            result.ImpossiblePrerequisites.Select(i => i.NodeId));
-
-        foreach (var node in nodeIndex.Values)
+        // validPrerequisiteEdges now contains only clean non-impossible edges
+        foreach (var (node, target, sourceAncestors, targetAncestors) in validPrerequisiteEdges.Values)
         {
-            if (node.PrerequisiteId is null) continue;
-            if (impossibleNodeIds.Contains(node.Id)) continue;
-            if (!nodeIndex.TryGetValue(node.PrerequisiteId.Value, out var target)) continue;
-
-            var warning = CheckReachability(node, target, parentMap, nodeIndex);
+            var warning = CheckReachability(node, target, sourceAncestors, targetAncestors);
             if (warning is not null)
             {
                 result.ReachabilityWarnings.Add(MakeIssue(node, target, warning));
@@ -104,7 +111,6 @@ public class ProgramValidator : IProgramValidator
     // ═══════════════════════════════════════════════════════════════════
     // Index building
     // ═══════════════════════════════════════════════════════════════════
-
     private static void BuildIndex(
         Node node, Node? parent,
         Dictionary<Guid, Node> index,
@@ -118,32 +124,16 @@ public class ProgramValidator : IProgramValidator
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Impossible prerequisite checks
+    // Forward-reference detection
     // ═══════════════════════════════════════════════════════════════════
-
-    /// <summary>Check if <paramref name="candidateId"/> is a descendant of <paramref name="ancestor"/>.</summary>
-    private static bool IsDescendant(Node ancestor, Guid candidateId)
-    {
-        foreach (var child in ancestor.Children)
-        {
-            if (child.Id == candidateId) return true;
-            if (IsDescendant(child, candidateId)) return true;
-        }
-        return false;
-    }
-
     /// <summary>
     /// Check if target comes strictly later than source within a shared InOrder ancestor.
     /// Finds the lowest common ancestor (LCA) and, if it's InOrder, compares branch positions.
     /// </summary>
     private static bool IsForwardReferenceInOrder(
-        Node source, Node target,
-        Dictionary<Guid, Node?> parentMap,
-        Dictionary<Guid, Node> nodeIndex)
+        List<Node> sourceChain,
+        List<Node> targetChain)
     {
-        var sourceChain = GetAncestorChain(source.Id, parentMap, nodeIndex); // [self, parent, ..., root]
-        var targetChain = GetAncestorChain(target.Id, parentMap, nodeIndex);
-
         // Find LCA: first node that appears in both chains
         var sourceIds = new HashSet<Guid>(sourceChain.Select(n => n.Id));
 
@@ -159,13 +149,14 @@ public class ProgramValidator : IProgramValidator
             }
         }
 
+        // Check lca is null as safeguard (rootNode will be lca at least)
         if (lca is null || lca.Rule != GroupRule.InOrder) return false;
 
         // Find the direct child of LCA on the source branch
         int sourceLcaIndex = sourceChain.FindIndex(n => n.Id == lca.Id);
-        
+
         // That be Impossible Prerequisites but handled with IsDescendant but that not Forward Reference Rejected
-        if (sourceLcaIndex <= 0 || targetLcaIndex <= 0) return false; 
+        if (sourceLcaIndex <= 0 || targetLcaIndex <= 0) return false;
 
         // this is done to find the child of LCA that has the source branch and the target branch to know who come first from shared parent
         var sourceDirectChild = sourceChain[sourceLcaIndex - 1]; // one step below LCA on source path
@@ -178,6 +169,9 @@ public class ProgramValidator : IProgramValidator
         return targetPos > sourcePos;
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // Build ancestor chains
+    // ═══════════════════════════════════════════════════════════════════
     /// <summary>
     /// Build ancestor chain from node to root: [self, parent, grandparent, ..., root].
     /// </summary>
@@ -207,50 +201,39 @@ public class ProgramValidator : IProgramValidator
     /// <summary>
     /// Detect cycles in the prerequisite graph using DFS with 3-coloring.
     /// Only operates on edges that weren't already caught by simpler checks.
+    /// Uses <paramref name="edges"/> directly as the adjacency map and removes cycle edges in O(1) time.
     /// </summary>
     private static List<ValidationIssue> DetectCycles(
-        List<(Node source, Node target)> edges,
-        Dictionary<Guid, Node> nodeIndex)
+        Dictionary<Guid, (Node source, Node target, List<Node> sourceAncestors, List<Node> targetAncestors)> edges)
     {
         var issues = new List<ValidationIssue>();
-
-        // Build adjacency list: source.Id → [target.Id, ...]
-        var adjacency = new Dictionary<Guid, List<Guid>>();
-        var edgeSourceNodes = new HashSet<Guid>();
-
-        foreach (var (source, target) in edges)
-        {
-            if (!adjacency.ContainsKey(source.Id))
-                adjacency[source.Id] = new();
-            adjacency[source.Id].Add(target.Id);
-            edgeSourceNodes.Add(source.Id);
-        }
-
-        if (adjacency.Count == 0) return issues;
+        if (edges.Count == 0) return issues;
 
         // DFS coloring: White → Gray → Black
-        var white = new HashSet<Guid>(nodeIndex.Keys);
+        // Track unvisited nodes directly from edges.Keys (nodes with prerequisites)
+        var white = new HashSet<Guid>(edges.Keys);
         var gray = new HashSet<Guid>();
         var black = new HashSet<Guid>();
         var cycleParticipants = new HashSet<Guid>();
         var path = new List<Guid>();
 
-        foreach (var nodeId in nodeIndex.Keys)
+        // Loop directly over 'edges.Keys' instead of all nodes in tree
+        foreach (var nodeId in edges.Keys)
         {
             if (!white.Contains(nodeId)) continue;
-            DfsCycleDetect(nodeId, adjacency, white, gray, black, cycleParticipants, path);
+            DfsCycleDetect(nodeId, edges, white, gray, black, cycleParticipants, path);
         }
 
-        // Report cycle issues for nodes that have prerequisites and are in the cycle
+        // Report cycle issues for nodes in cycle & remove cycle edges in O(1) time
         foreach (var nodeId in cycleParticipants)
         {
-            if (!edgeSourceNodes.Contains(nodeId)) continue;
-            var node = nodeIndex[nodeId];
-            if (node.PrerequisiteId is null) continue;
-            if (!nodeIndex.TryGetValue(node.PrerequisiteId.Value, out var target)) continue;
+            if (!edges.TryGetValue(nodeId, out var edge)) continue;
 
-            issues.Add(MakeIssue(node, target,
-                $"'{node.Name}' is part of a prerequisite cycle involving '{target.Name}' (mutual/indirect dependency)."));
+            issues.Add(MakeIssue(edge.source, edge.target,
+                $"'{edge.source.Name}' depends on '{edge.target.Name}' is part of a prerequisites create indirect mutual cycle."));
+
+            // O(1) instant removal from dictionary
+            edges.Remove(nodeId);
         }
 
         return issues;
@@ -258,7 +241,7 @@ public class ProgramValidator : IProgramValidator
 
     private static void DfsCycleDetect(
         Guid nodeId,
-        Dictionary<Guid, List<Guid>> adjacency,
+        Dictionary<Guid, (Node source, Node target, List<Node> sourceAncestors, List<Node> targetAncestors)> edges,
         HashSet<Guid> white,
         HashSet<Guid> gray,
         HashSet<Guid> black,
@@ -269,21 +252,24 @@ public class ProgramValidator : IProgramValidator
         gray.Add(nodeId);
         path.Add(nodeId);
 
-        if (adjacency.TryGetValue(nodeId, out var neighbors))
+        // O(1) direct lookup from edges dictionary
+        if (edges.TryGetValue(nodeId, out var edge))
         {
-            foreach (var neighbor in neighbors)
+            var targetId = edge.target.Id;
+
+            if (gray.Contains(targetId))
             {
-                if (gray.Contains(neighbor))
+                // Cycle found — record all nodes from cycle start to current
+                int cycleStart = path.IndexOf(targetId);
+                if (cycleStart >= 0)
                 {
-                    // Cycle found — record all nodes from the cycle start to current
-                    int cycleStart = path.IndexOf(neighbor);
                     for (int i = cycleStart; i < path.Count; i++)
                         cycleParticipants.Add(path[i]);
                 }
-                else if (white.Contains(neighbor))
-                {
-                    DfsCycleDetect(neighbor, adjacency, white, gray, black, cycleParticipants, path);
-                }
+            }
+            else if (white.Contains(targetId) || (!black.Contains(targetId) && edges.ContainsKey(targetId)))
+            {
+                DfsCycleDetect(targetId, edges, white, gray, black, cycleParticipants, path);
             }
         }
 
@@ -297,40 +283,22 @@ public class ProgramValidator : IProgramValidator
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Check if a prerequisite target is only conditionally reachable.
-    /// 
-    /// For each Choice(N &lt; M) ancestor along the target's path to the root,
-    /// we check whether the source node is also under the SAME branch of that
-    /// Choice group. If source shares the branch, the Choice is irrelevant
-    /// (both are co-selected). If source is NOT under the same branch (or is
-    /// outside the Choice group entirely), the target is conditional.
-    /// 
-    /// Key distinction: a prerequisite on a Choice group AS A WHOLE is safe —
-    /// the group will be reached. Only a specific child INSIDE a Choice(N &lt; M)
-    /// group is conditional.
+    /// Check if target is inside a Choice(N < M) container where target is not guaranteed to be chosen.
+    /// Uses precomputed ancestor chains: [self, parent, grandparent, ..., root].
     /// </summary>
     private static string? CheckReachability(
         Node source, Node target,
-        Dictionary<Guid, Node?> parentMap,
-        Dictionary<Guid, Node> nodeIndex)
+        List<Node> sourceAncestors,
+        List<Node> targetAncestors)
     {
-        // Build the source's ancestor set for fast lookups
-        var sourceAncestorIds = new HashSet<Guid>();
-        var cur = source;
-        while (true)
-        {
-            sourceAncestorIds.Add(cur.Id);
-            if (!parentMap.TryGetValue(cur.Id, out var p) || p is null) break;
-            cur = p;
-        }
-
+        var sourceAncestorIds = new HashSet<Guid>(sourceAncestors.Select(n => n.Id));
         var conditionalReasons = new List<string>();
-        var current = target;
 
-        while (true)
+        // targetAncestors is [target, parent, grandparent, ..., root]
+        for (int i = 0; i < targetAncestors.Count - 1; i++)
         {
-            if (!parentMap.TryGetValue(current.Id, out var parent) || parent is null)
-                break; // Reached root
+            var current = targetAncestors[i];
+            var parent = targetAncestors[i + 1];
 
             // Is parent a Choice(N < M) group?
             if (parent.Type == NodeType.Group &&
@@ -342,16 +310,18 @@ public class ProgramValidator : IProgramValidator
                 // Check if source is also inside this same branch (i.e. a descendant of `current`).
                 bool sourceInSameBranch = sourceAncestorIds.Contains(current.Id);
 
-                if (!sourceInSameBranch)
+                if (sourceInSameBranch)
                 {
-                    // Source is NOT under the same branch — this Choice makes the target conditional
-                    conditionalReasons.Add(
-                        $"'{current.Name}' is inside Choice group '{parent.Name}' " +
-                        $"(pick {parent.ChoiceCount} of {parent.Children.Count}), so it may not be selected");
+                    // Co-selected under the same branch!
+                    // All higher ancestors are also shared, so we can break early.
+                    break;
                 }
-            }
 
-            current = parent;
+                // Source is NOT under the same branch — this Choice makes the target conditional
+                conditionalReasons.Add(
+                    $"'{current.Name}' is inside Choice group '{parent.Name}' " +
+                    $"(pick {parent.ChoiceCount.Value} of {parent.Children.Count}), so it may not be selected");
+            }
         }
 
         if (conditionalReasons.Count == 0)
