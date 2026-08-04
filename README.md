@@ -45,11 +45,11 @@ All **18 unit test scenarios** pass cleanly in under 1 second.
 
 ## 💡 Business Assumptions & Design Decisions
 
-### 1. A step cannot require completion of the module it belongs to
+### 1. A Node cannot require any of his Ancestors
 
 > **Scenario**: Imagine a "Foundations" module that contains "Introduction to Computing". If we set "Introduction to Computing" to require "Foundations" to be completed first, we create a deadlock — the module can't complete until the step is done, but the step can't start until the module is done. Neither can ever begin.
 
-This applies to all ancestor levels. A step deep inside a nested structure cannot depend on any of its parent or grandparent containers — because the same deadlock logic applies at every nesting depth.
+This applies to all ancestor levels, the only mentioned in description the case of require of descendants not ancestors.
 
 ```
 Foundations (Module)                        
@@ -58,7 +58,28 @@ Foundations (Module)
 
 ---
 
-### 2. Each curriculum item is identified by a unique GUID from frontend, not by name
+### 2. Choice Group items are unordered
+
+> **Scenario**: When a student pick 2 of 3 specializations (AI, IT, or Programming), these are parallel alternatives — not a sequence. The student doesn't need to complete "AI" before "IT" because elective choices don't depend on each other. So, the usual rule of "you can't depend on something that comes after you" doesn't apply inside elective (choice) groups.
+
+> so Forward reference doesn't apply here **However**, two elective options **cannot require each other**. If the "AI Module" requires "IT Module" will valid if the "IT Module" doesn't require "AI Module", neither can ever be started — this is a mutual dependency cycle and is always invalid.
+
+```
+Major Specialization (Choose 1)
+├── AI Module  →  Prerequisite: IT Module
+└── IT Module  →  Prerequisite: AI Module     ❌ Mutual cycle — neither can start
+```
+
+---
+
+### 3. A prerequisite on a specific item inside a "pick all" (Group, CHOICE: 3 of 3) is safe, not warning
+> **Scenario**: A Choice group set to "pick 3 of 3" requires every item inside it to be completed — there's no alternative path, only one way through. So, a prerequisite pointing at one specific item inside it is just as safe as pointing at a mandatory step, even though the item technically sits inside a Choice container.
+
+This is different from a normal Choice group (e.g. "pick 2 of 3"), where a specific item might never be selected and any prerequisite on it is flagged as a reachability **warning**.
+
+---
+
+### 4. Each Node with its prerequisite is identified by a unique GUID from frontend, not by name
 
 > **Scenario**: A university might have an "Electives" group inside both the AI track and the IT track. If we link prerequisites by name, the system can't tell which "Electives" is meant. By using unique identifiers (GUIDs), every item in the curriculum is unambiguous — even when two items share the same display name.
 
@@ -67,25 +88,10 @@ In API responses, we return **both** the ID and the human-readable name of each 
 ```
 AI Track                          IT Track
 └── Electives (id: AAA)           └── Electives (id: BBB)     ← Same name, different items
+```---
 ```
 
 ---
-
-### 3. Choice Group items are unordered — only circular dependencies are invalid
-
-> **Scenario**: When a student picks 2 of 3 specializations (AI, IT, or Programming), these are parallel alternatives — not a sequence. The student doesn't need to complete "AI" before "IT" because elective choices don't depend on each other. So the usual rule of "you can't depend on something that comes after you" doesn't apply inside elective (choice) groups.
-
-> **However**, two elective options **cannot require each other**. If the "AI Module" requires "IT Module" and the "IT Module" requires "AI Module", neither can ever be started — this is a mutual dependency cycle and is always invalid.
-
-```
-Major Specialization (Choose 1)
-├── AI Module  →  Prerequisite: IT Module
-└── IT Module  →  Prerequisite: AI Module     ❌ Mutual cycle — neither can start
-```
-
-
----
-
 
 ## 🤖 AI Tool Usage
 
