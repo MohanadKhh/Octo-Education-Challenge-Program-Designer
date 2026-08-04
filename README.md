@@ -81,7 +81,7 @@ This is different from a normal Choice group (e.g. "pick 2 of 3"), where a speci
 
 ### 4. Each Node with its prerequisite is identified by a unique GUID from frontend, not by name
 
-> **Scenario**: A university might have an "Electives" group inside both the AI track and the IT track. If we link prerequisites by name, the system can't tell which "Electives" is meant. By using unique identifiers (GUIDs), every item in the curriculum is unambiguous — even when two items share the same display name.
+> **Scenario**: A university might have an "Electives" group inside both the AI track and the IT track. If we link prerequisites by name, the system can't tell which "Electives" is meant. By using unique identifiers (GUIDs), every item in the curriculum is unambiguous — even when two items share the same display name. **However,** the stored GUID in DB created by Backend not cliend side.
 
 In API responses, we return **both** the ID and the human-readable name of each prerequisite, so the frontend can display friendly labels while keeping reliable linkages under the hood — [see example of Create Program Endpoint request with GUID and response with prerequisite(ID & Name) below](#1-post-programs--create-program).
 
