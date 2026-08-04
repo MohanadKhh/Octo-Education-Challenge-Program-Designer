@@ -153,7 +153,7 @@ public class ProgramServiceTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Status.Should().Be(ResultStatus.ValidationError);
-        result.Errors.Should().ContainKey("NodeMapping");
+        result.Errors.Should().ContainKey("RootNode");
     }
 
     [Fact]
@@ -193,10 +193,11 @@ public class ProgramServiceTests
         result.Errors.Should().ContainKey("NodeMapping");
         result.Errors!["NodeMapping"].Should().Contain(e => e.Contains("Step node 'Networks & Security' cannot have children"));
     }
+
     [Fact]
-    public async Task CreateProgram_WithDuplicateDatabaseKey_ReturnsValidationFailure_NoException()
+    public async Task CreateProgram_IgnoresClientNodeIdsAndGeneratesFreshBackendGuids()
     {
-        // Arrange
+        // Arrange — Two requests with the exact same client rootId
         var rootId = Guid.NewGuid();
 
         var request = new CreateProgramRequest
@@ -215,13 +216,10 @@ public class ProgramServiceTests
         var firstResult = await _service.CreateProgramAsync(request);
         firstResult.IsSuccess.Should().BeTrue();
 
-        // Second call with same rootId triggers DB duplicate key
-        var duplicateResult = await _service.CreateProgramAsync(request);
-
-        // Assert
-        duplicateResult.IsSuccess.Should().BeFalse();
-        duplicateResult.Status.Should().Be(ResultStatus.ValidationError);
-        duplicateResult.Errors.Should().ContainKey("EntityId");
+        // Second call with same client rootId also succeeds because backend generates fresh unique GUIDs
+        var secondResult = await _service.CreateProgramAsync(request);
+        secondResult.IsSuccess.Should().BeTrue();
+        secondResult.Data!.RootNode.Id!.Value.Should().NotBe(firstResult.Data!.RootNode.Id!.Value, "backend must assign unique GUIDs for each creation");
     }
 }
 

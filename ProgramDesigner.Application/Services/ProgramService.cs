@@ -51,19 +51,19 @@ public class ProgramService : IProgramService
                 "Program creation failed due to validation errors.");
         }
 
+        if (!string.Equals(request.RootNode.Type, NodeType.Group.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            return GeneralResult<ProgramResponse>.ValidationFailure(
+                new Dictionary<string, string[]> { { "RootNode", new[] { "The root node of a program must be a Group." } } },
+                "Program creation failed due to validation errors.");
+        }
+
         var programId = Guid.NewGuid();
 
         if (!NodeMapper.TryToDomain(request.RootNode, programId, out var rootNode, out var mappingErrors))
         {
             return GeneralResult<ProgramResponse>.ValidationFailure(
                 mappingErrors!,
-                "Program creation failed due to validation errors.");
-        }
-
-        if (rootNode!.Type != NodeType.Group)
-        {
-            return GeneralResult<ProgramResponse>.ValidationFailure(
-                new Dictionary<string, string[]> { { "RootNode", new[] { "The root node of a program must be a Group." } } },
                 "Program creation failed due to validation errors.");
         }
 

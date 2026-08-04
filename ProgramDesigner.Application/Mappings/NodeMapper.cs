@@ -7,12 +7,14 @@ namespace ProgramDesigner.Application.Mappings;
 /// <summary>
 /// Static mapper between NodeDto ↔ Node (recursive tree mapping).
 /// Option A Architecture: PrerequisiteId inputs with PrerequisiteId + PrerequisiteName outputs.
+/// Always generates fresh backend GUIDs for nodes while maintaining prerequisite links.
 /// Non-throwing validation via TryToDomain.
 /// </summary>
 public static class NodeMapper
 {
     /// <summary>
     /// Safely map a NodeDto tree (from API request) to a domain Node tree.
+    /// Replaces all client-provided node IDs with fresh backend-generated GUIDs while translating prerequisite links.
     /// Returns false and populates <paramref name="errors"/> if validation fails.
     /// </summary>
     public static bool TryToDomain(
@@ -23,15 +25,16 @@ public static class NodeMapper
         int order = 0)
     {
         var errorList = new List<string>();
-        var allNodeIds = new HashSet<Guid>();
+        var clientNodeIds = new HashSet<Guid>();
+        var idMap = new Dictionary<Guid, Guid>(); // clientNodeId -> newBackendNodeId
 
-        // Pass 1: Build tree and collect node IDs + syntax validation
-        root = BuildNode(dto, programId, order, allNodeIds, errorList);
+        // Pass 1: Build tree, generate fresh backend GUIDs, and record ID mappings
+        root = BuildNode(dto, programId, order, clientNodeIds, idMap, errorList);
 
-        // Pass 2: Validate that all PrerequisiteId references point to an existing node in the tree
+        // Pass 2: Translate PrerequisiteId references to new backend GUIDs and validate existence
         if (root is not null)
         {
-            ValidatePrerequisiteIds(root, allNodeIds, errorList);
+            RemapAndValidatePrerequisites(root, idMap, errorList);
         }
 
         if (errorList.Count > 0)
@@ -63,7 +66,8 @@ public static class NodeMapper
 
     private static Node? BuildNode(
         NodeDto dto, Guid programId, int order,
-        HashSet<Guid> allNodeIds,
+        HashSet<Guid> clientNodeIds,
+        Dictionary<Guid, Guid> idMap,
         List<string> errorList)
     {
         if (dto is null)
@@ -122,22 +126,27 @@ public static class NodeMapper
             errorList.Add($"Step node '{dto.Name}' cannot have a group rule ('{dto.Rule}'). Only Group nodes can specify rules.");
         }
 
-        var nodeId = dto.Id ?? Guid.NewGuid();
+        // Identify client node ID (or assign temporary one if null)
+        var clientNodeId = dto.Id ?? Guid.NewGuid();
 
-        if (!allNodeIds.Add(nodeId))
+        if (!clientNodeIds.Add(clientNodeId))
         {
-            errorList.Add($"Duplicate node ID '{nodeId}' found on node '{dto.Name}'. Every node must have a unique ID.");
+            errorList.Add($"Duplicate node ID '{clientNodeId}' found on node '{dto.Name}'. Every node must have a unique ID.");
         }
+
+        // ALWAYS generate a fresh, new backend GUID for database storage
+        var backendNodeId = Guid.NewGuid();
+        idMap[clientNodeId] = backendNodeId;
 
         var node = new Node
         {
-            Id = nodeId,
+            Id = backendNodeId,
             Name = dto.Name,
             Type = nodeType,
             StepType = nodeType == NodeType.Step ? dto.StepType : null,
             Rule = rule,
             ChoiceCount = rule == GroupRule.Choice ? dto.ChoiceCount : null,
-            PrerequisiteId = dto.PrerequisiteId,
+            PrerequisiteId = dto.PrerequisiteId, // Holds client prerequisite ID temporarily for Pass 2 remapping
             Order = order,
             ProgramId = programId
         };
@@ -152,7 +161,7 @@ public static class NodeMapper
             {
                 for (int i = 0; i < dto.Children.Count; i++)
                 {
-                    var child = BuildNode(dto.Children[i], programId, i, allNodeIds, errorList);
+                    var child = BuildNode(dto.Children[i], programId, i, clientNodeIds, idMap, errorList);
                     if (child is not null)
                     {
                         child.ParentNodeId = node.Id;
@@ -165,21 +174,28 @@ public static class NodeMapper
         return node;
     }
 
-    private static void ValidatePrerequisiteIds(
+    private static void RemapAndValidatePrerequisites(
         Node node,
-        HashSet<Guid> allNodeIds,
+        Dictionary<Guid, Guid> idMap,
         List<string> errorList)
     {
         if (node.PrerequisiteId.HasValue)
         {
-            if (!allNodeIds.Contains(node.PrerequisiteId.Value))
+            var clientPrerequisiteId = node.PrerequisiteId.Value;
+
+            if (idMap.TryGetValue(clientPrerequisiteId, out var newBackendPrerequisiteId))
             {
-                errorList.Add($"Node '{node.Name}' has prerequisiteId '{node.PrerequisiteId.Value}', but no node with that ID exists in the program tree.");
+                // Translate client prerequisite ID to the new backend GUID
+                node.PrerequisiteId = newBackendPrerequisiteId;
+            }
+            else
+            {
+                errorList.Add($"Node '{node.Name}' has prerequisiteId '{clientPrerequisiteId}', but no node with that ID exists in the program tree.");
             }
         }
 
         foreach (var child in node.Children)
-            ValidatePrerequisiteIds(child, allNodeIds, errorList);
+            RemapAndValidatePrerequisites(child, idMap, errorList);
     }
 
     public static NodeDto ToDto(Node node, Dictionary<Guid, string>? idToNameIndex = null)
